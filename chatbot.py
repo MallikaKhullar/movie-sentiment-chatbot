@@ -10,7 +10,7 @@ import csv
 import math
 
 import numpy as np
-
+import re
 from movielens import ratings
 from random import randint
 
@@ -23,7 +23,17 @@ class Chatbot:
     def __init__(self, is_turbo=False):
       self.name = 'moviebot'
       self.is_turbo = is_turbo
+      self.user_vec = {}
       self.read_data()
+      # Responses 
+      self.responses = { 
+        'no_movies_found': ["You didn't mention any movies. Could you suggest one?"],
+        'prompt':["Tell me about another movie you have seen."],
+        'like_movie':["You liked %s."],
+        'dislike_movie':["You did not like %s."],
+        'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s."],
+        'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen."]
+      }
 
     #############################################################################
     # 1. WARM UP REPL
@@ -73,12 +83,54 @@ class Chatbot:
       # calling other functions. Although modular code is not graded, it is       #
       # highly recommended                                                        #
       #############################################################################
+      response = ""
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
-        response = 'processed %s in starter mode' % input
-
+        # print self.titles
+        movie_regex = r"\"((?:\w+\W*)*)\""
+        movie_titles = re.findall(movie_regex, input)
+        movie_name = movie_titles[0]
+        if not movie_titles:
+          response = self.responses["no_movies_found"][0]
+        else:
+          movie_found = False
+          for movie in self.titles:
+            print movie[0]
+            if movie_name == movie[0]:
+              print "MOVIE FOUNDDDDDDDDDDDD"
+              score = self.get_sentiment_score(input)
+              print score
+              self.user_vec[self.titles.index(movie)] = score
+              #play around with thresholds for like/dislike
+              if score == 0:
+                response = self.responses["sentiment_clarification"][0] % movie_name
+              elif score > 0:
+                response = self.responses["like_movie"][0] % movie_name
+              else:
+                response = self.responses["dislike_movie"][0] % movie_name
+              movie_found = True
+              break
+          if not movie_found:
+            response = self.responses["movie_clarification"][0]
+          
+          #response = 'You typed the movie %s' % movie_titles[0]
+          print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
       return response
+
+    def get_sentiment_score(self, input):
+      score = 0
+      line = input.split()
+      for word in line:
+        if word in self.sentiment:
+          if self.sentiment[word] == 'pos':
+            score += 1
+          else:
+            score -= 1
+      return score
+
+
+
 
 
     #############################################################################
@@ -97,8 +149,11 @@ class Chatbot:
 
     def binarize(self):
       """Modifies the ratings matrix to make all of the ratings binary"""
-
-      pass
+      for i,r in enumerate(self.ratings):
+        if r > 3.0:
+          self.ratings[i] = 1
+        else:
+          self.ratings[i] = -1
 
 
     def distance(self, u, v):
