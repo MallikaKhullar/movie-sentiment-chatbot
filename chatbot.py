@@ -13,6 +13,7 @@ import numpy as np
 import re
 from movielens import ratings
 from random import randint
+import random
 
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
@@ -87,38 +88,56 @@ class Chatbot:
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
-        # print self.titles
-        movie_regex = r"\"((?:\w+\W*)*)\""
-        movie_titles = re.findall(movie_regex, input)
-        movie_name = movie_titles[0]
+        # Pull the movie titles from the user input
+        movie_titles = self.get_movie_names(input)
+        
+        # Nothing found within quotations that is a movie
         if not movie_titles:
-          response = self.responses["no_movies_found"][0]
+          return self.get_response("no_movies_found")
+        
+        # See if the movie title is in our database
+        movie_name = movie_titles[0] # just use the first movie found for now
+        movie_entry = self.movie_in_db(movie_name)
+        if movie_entry is None:
+          return self.get_response("movie_clarification")
+
+        # Associate the movie title with a sentiment score
+        score = self.get_sentiment_score(input)
+        self.user_vec[self.titles.index(movie_entry)] = score  # movie_id: sentiment_score
+        
+        # TODO: Play around with thresholds for like/dislike
+        if score == 0:
+          response = self.get_response("sentiment_clarification") % movie_name
+        elif score > 0:
+          response = self.get_response("like_movie") % movie_name
         else:
-          movie_found = False
-          for movie in self.titles:
-            print movie[0]
-            if movie_name == movie[0]:
-              print "MOVIE FOUNDDDDDDDDDDDD"
-              score = self.get_sentiment_score(input)
-              print score
-              self.user_vec[self.titles.index(movie)] = score
-              #play around with thresholds for like/dislike
-              if score == 0:
-                response = self.responses["sentiment_clarification"][0] % movie_name
-              elif score > 0:
-                response = self.responses["like_movie"][0] % movie_name
-              else:
-                response = self.responses["dislike_movie"][0] % movie_name
-              movie_found = True
-              break
-          if not movie_found:
-            response = self.responses["movie_clarification"][0]
-          
-          #response = 'You typed the movie %s' % movie_titles[0]
-          print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
+          response = self.get_response("dislike_movie") % movie_name
+
+      # response = 'You typed the movie %s' % movie_titles[0]
+      # print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
       return response
 
+    def movie_in_db(self, movie_name):
+      """Returns movie entry if movie is in our database."""
+      movie_entry = None # entry = (movie_name, genres)
+      for movie in self.titles:
+        # Found the movie in our movie database!
+        if movie[0] == movie_name:
+          movie_entry = movie
+          break
+      return movie_entry
+
+    def get_response(self, key):
+      """Returns a random response for the given key."""
+      return random.choice(self.responses[key])
+
+    def get_movie_names(self, input):
+      """Pulls all movie names inside quotations from the input."""
+      movie_regex = r"\"((?:\w+\W*)*)\""
+      return re.findall(movie_regex, input)
+
     def get_sentiment_score(self, input):
+      """Get the sentiment score of a full phrase."""
       score = 0
       line = input.split()
       for word in line:
@@ -128,9 +147,6 @@ class Chatbot:
           else:
             score -= 1
       return score
-
-
-
 
 
     #############################################################################
