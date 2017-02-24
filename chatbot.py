@@ -8,12 +8,14 @@
 ######################################################################
 import csv
 import math
+import string
 
 import numpy as np
 import re
 from movielens import ratings
 from random import randint
 import random
+from PorterStemmer import PorterStemmer
 
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
@@ -25,7 +27,8 @@ class Chatbot:
       self.name = 'moviebot'
       self.is_turbo = is_turbo
       self.user_vec = {}
-      self.read_data()
+      #get more complete list of negations
+      self.negation = {'didn\'t', 'never', 'not', 'don\'t'}
       # Responses 
       self.responses = { 
         'no_movies_found': ["You didn't mention any movies. Could you suggest one?"],
@@ -33,8 +36,13 @@ class Chatbot:
         'like_movie':["You liked %s."],
         'dislike_movie':["You did not like %s."],
         'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s."],
-        'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen."]
+        'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen."],
+        'fake_movie':["I'm sorry, I don't recognize that movie. Could you tell me about a different one?"],
       }
+
+      self.stemmedSentiment = {}
+      self.p = PorterStemmer()
+      self.read_data()
 
     #############################################################################
     # 1. WARM UP REPL
@@ -99,7 +107,7 @@ class Chatbot:
         movie_name = movie_titles[0] # just use the first movie found for now
         movie_entry = self.movie_in_db(movie_name)
         if movie_entry is None:
-          return self.get_response("movie_clarification")
+          return self.get_response("fake_movie")
 
         # Associate the movie title with a sentiment score
         score = self.get_sentiment_score(input)
@@ -114,15 +122,16 @@ class Chatbot:
           response = self.get_response("dislike_movie") % movie_name
 
       # response = 'You typed the movie %s' % movie_titles[0]
-      # print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
+      print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
       return response
 
     def movie_in_db(self, movie_name):
-      """Returns movie entry if movie is in our database."""
+      """Returns movie entry with the movie_name in our database."""
       movie_entry = None # entry = (movie_name, genres)
       for movie in self.titles:
         # Found the movie in our movie database!
-        if movie[0] == movie_name:
+        #TODO: handle improper capitalization, some article errors, misspellings
+        if re.search("(?:[Tt]he |[Aa]n? |[Ll][ea]s? |[Ee]l |[OoAa] )?" + movie_name + "(?: \(\d\d\d\d\))?", movie[0]):
           movie_entry = movie
           break
       return movie_entry
@@ -140,12 +149,23 @@ class Chatbot:
       """Get the sentiment score of a full phrase."""
       score = 0
       line = input.split()
+      isNeg = False
       for word in line:
+        print word
+        if word in self.negation:
+          isNeg = True
+          continue
+        word = self.p.stem(word)
         if word in self.sentiment:
-          if self.sentiment[word] == 'pos':
-            score += 1
-          else:
+          if (isNeg and self.sentiment[word] == 'pos') or (not isNeg and self.sentiment[word] == 'neg'):
             score -= 1
+          elif (isNeg and self.sentiment[word] == 'neg') or (not isNeg and self.sentiment[word] == 'pos'):
+            score += 1
+          print score
+          if isNeg:
+          #check how we tokenize
+            isNeg = False
+      print score
       return score
 
 
@@ -159,9 +179,17 @@ class Chatbot:
       # The values stored in each row i and column j is the rating for
       # movie i by user j
       self.titles, self.ratings = ratings()
+      # print len(self.ratings[0])
+      # print len(self.ratings[1])
+      self.binarize()
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
+      self.stemSentiment()
 
+    def stemSentiment(self):
+      for old_key,value in self.sentiment.iteritems():
+        new_key = self.p.stem(old_key)
+        self.stemmedSentiment[new_key] = value
 
     def binarize(self):
       """Modifies the ratings matrix to make all of the ratings binary"""
@@ -176,16 +204,23 @@ class Chatbot:
       """Calculates a given distance function between vectors u and v"""
       # TODO: Implement the distance function between vectors u and v]
       # Note: you can also think of this as computing a similarity measure
-
       pass
 
 
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
-      # TODO: Implement a recommendation function that takes a user vector u
-      # and outputs a list of movies recommended by the chatbot
-
+      # best = -1.0
+      # recommendation = []
+      # for movie in self.titles:
+      #   v = #row i in self.titles, self.ratings
+      #   d = self.distance(u, v)
+      #   if d > best:
+      #     best = d
+      #     recommendation = v
+      #   if best == 1:
+      #     break
+      # return recommendation
       pass
 
 
