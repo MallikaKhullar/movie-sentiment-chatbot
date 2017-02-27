@@ -131,10 +131,10 @@ class Chatbot:
     def movie_in_db(self, movie_name):
       """Returns movie entry with the movie_name in our database."""
       movie_entry = None # entry = (movie_name, genres)
+      movie_name = re.sub("(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )?", "(?:\w+\W+)?", movie_name) #allow for misuse of articles
       for movie in self.titles:
         # Found the movie in our movie database!
-        #TODO: handle improper capitalization, some article errors, misspellings
-        if re.search("(?:[Tt]he |[Aa]n? |[Ll][ea]s? |[Ee]l |[OoAa] )?" + movie_name + "(?: \(\d\d\d\d\))?", movie[0]):
+        if re.search(movie_name.lower(), movie[0].lower()): #to handle improper capitalizations
           movie_entry = movie
           break
       return movie_entry
@@ -145,7 +145,8 @@ class Chatbot:
 
     def get_movie_names(self, input):
       """Pulls all movie names inside quotations from the input."""
-      movie_regex = r"\"((?:\w+\W*)*)\""
+      #movie_regex = r"\"((?:\w+\W*)*)\""
+      movie_regex = r"\"(.+)\""
       return re.findall(movie_regex, input)
 
     def get_sentiment_score(self, input):
