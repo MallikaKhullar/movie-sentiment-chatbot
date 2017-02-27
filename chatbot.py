@@ -26,7 +26,6 @@ class Chatbot:
     def __init__(self, is_turbo=False):
       self.name = 'moviebot'
       self.is_turbo = is_turbo
-      self.user_vec = {}
       #get more complete list of negations
       self.negation = {'didn\'t', 'never', 'not', 'don\'t'}
       # Responses 
@@ -43,6 +42,7 @@ class Chatbot:
       self.stemmedSentiment = {}
       self.p = PorterStemmer()
       self.read_data()
+      self.user_vec = [0] * len(self.ratings[0])
 
     #############################################################################
     # 1. WARM UP REPL
@@ -111,8 +111,11 @@ class Chatbot:
 
         # Associate the movie title with a sentiment score
         score = self.get_sentiment_score(input)
-        self.user_vec[self.titles.index(movie_entry)] = score  # movie_id: sentiment_score
-        
+        movie_index = self.titles.index(movie_entry)
+        self.user_vec[movie_index] = score  # movie_id -> sentiment_score
+        recommendations = self.recommend(self.user_vec)
+        print recommendations
+
         # TODO: Play around with thresholds for like/dislike
         if score == 0:
           response = self.get_response("sentiment_clarification") % movie_name
@@ -122,7 +125,7 @@ class Chatbot:
           response = self.get_response("dislike_movie") % movie_name
 
       # response = 'You typed the movie %s' % movie_titles[0]
-      print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
+      # print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
       return response
 
     def movie_in_db(self, movie_name):
@@ -151,7 +154,7 @@ class Chatbot:
       line = input.split()
       isNeg = False
       for word in line:
-        print word
+        # print word
         if word in self.negation:
           isNeg = True
           continue
@@ -161,11 +164,11 @@ class Chatbot:
             score -= 1
           elif (isNeg and self.sentiment[word] == 'neg') or (not isNeg and self.sentiment[word] == 'pos'):
             score += 1
-          print score
+          # print score
           if isNeg:
           #check how we tokenize
             isNeg = False
-      print score
+      # print score
       return score
 
 
@@ -179,9 +182,8 @@ class Chatbot:
       # The values stored in each row i and column j is the rating for
       # movie i by user j
       self.titles, self.ratings = ratings()
-      # print len(self.ratings[0])
-      # print len(self.ratings[1])
-      self.binarize()
+      self.title_names = [title for title, genre in self.titles]
+      self.binarize() # binarizes the ratings
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
       self.stemSentiment()
@@ -193,36 +195,45 @@ class Chatbot:
 
     def binarize(self):
       """Modifies the ratings matrix to make all of the ratings binary"""
-      for i,r in enumerate(self.ratings):
-        if r > 3.0:
-          self.ratings[i] = 1
-        else:
-          self.ratings[i] = -1
-
+      for i,user_ratings in enumerate(self.ratings):
+        # Loop through each list of ratings for a given movie
+        for j,movie_rating in enumerate(user_ratings):
+          if movie_rating > 3.0:
+            self.ratings[i][j] = 1
+          elif movie_rating > 0:
+            self.ratings[i][j] = -1
+          else:
+            self.ratings[i][j] = 0
 
     def distance(self, u, v):
       """Calculates a given distance function between vectors u and v"""
-      # TODO: Implement the distance function between vectors u and v]
       # Note: you can also think of this as computing a similarity measure
-      pass
-
+      dp = 0
+      for a, b in zip(u, v):
+        dp += a * b
+      return dp
 
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
-      # best = -1.0
-      # recommendation = []
-      # for movie in self.titles:
-      #   v = #row i in self.titles, self.ratings
-      #   d = self.distance(u, v)
-      #   if d > best:
-      #     best = d
-      #     recommendation = v
-      #   if best == 1:
-      #     break
-      # return recommendation
-      pass
-
+      # Keep track of similarity and users.
+      bestSimilarity = -1.0
+      bestUser = 0
+      # Calculate the input vector similarity against all other movies.
+      for i, user_ratings in enumerate(self.ratings):
+        similarity = self.distance(u, user_ratings)
+        if similarity > bestSimilarity:
+          bestSimilarity = similarity
+          bestUser = i
+      
+      # Recommend the movies that are not currently liked by input vector.
+      recommendations = []
+      bestUser_ratings = self.ratings[bestUser]
+      for i, input_rating in enumerate(u):
+        if input_rating == 0 and bestUser_ratings[i] != 0:
+          recommendations.append(self.title_names[i])
+      recommendations = sorted(recommendations, reverse=True)
+      return recommendations
 
     #############################################################################
     # 4. Debug info                                                             #
