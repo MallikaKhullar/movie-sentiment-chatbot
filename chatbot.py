@@ -16,6 +16,7 @@ from movielens import ratings
 from random import randint
 import random
 from PorterStemmer import PorterStemmer
+import collections
 
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
@@ -30,19 +31,27 @@ class Chatbot:
       self.negation = {'didn\'t', 'never', 'not', 'don\'t'}
       # Responses 
       self.responses = { 
-        'no_movies_found': ["You didn't mention any movies. Could you suggest one?"],
-        'prompt':["Tell me about another movie you have seen."],
-        'like_movie':["You liked %s."],
-        'dislike_movie':["You did not like %s."],
-        'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s."],
-        'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen."],
-        'fake_movie':["I'm sorry, I don't recognize that movie. Could you tell me about a different one?"],
+        'no_movies_found': ["You didn't mention any movies. Could you suggest one? "],
+        'prompt':["Tell me about another movie you have seen. ", "Could you tell me about another movie? "],
+        'like_movie':["You liked %s. ", "So you liked %s, huh? "],
+        'dislike_movie':["You did not like %s. ", "Yeah, I wasn't a huge fan of %s either. "],
+        'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s. "],
+        'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen. "],
+        'fake_movie':["I'm sorry, I don't recognize that movie. Could you tell me about a different one? "],
+        'recommend':["I know one I think you'd like! You should check out %s. ", "I think you would enjoy %s. ", 
+                    "Have you ever seen %s? It seems right up your alley! "]
       }
 
       self.stemmedSentiment = {}
       self.p = PorterStemmer()
       self.read_data()
-      self.user_vec = [0] * len(self.ratings[0])
+      #self.user_vec = [0] * len(self.ratings[0])
+      self.user_vec = collections.defaultdict(lambda: 0)
+      #constant value for how many data points needed for a recommendation
+      self.threshold = 1
+      #constant value for number of movies to recommend
+      self.k = 1
+      self.recommendations = [[0, 0]] * len(self.ratings[0])
 
     #############################################################################
     # 1. WARM UP REPL
@@ -92,6 +101,7 @@ class Chatbot:
       # calling other functions. Although modular code is not graded, it is       #
       # highly recommended                                                        #
       #############################################################################
+      
       response = ""
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
@@ -112,9 +122,9 @@ class Chatbot:
         # Associate the movie title with a sentiment score
         score = self.get_sentiment_score(input)
         movie_index = self.titles.index(movie_entry)
-        self.user_vec[movie_index] = score  # movie_id -> sentiment_score
-        recommendations = self.recommend(self.user_vec)
-        print recommendations
+        self.user_vec[movie_index] = score - (score - 1) # movie_id -> binarized sentiment score
+        
+        #print recommendations
 
         # TODO: Play around with thresholds for like/dislike
         if score == 0:
@@ -124,8 +134,17 @@ class Chatbot:
         else:
           response = self.get_response("dislike_movie") % movie_name
 
+      if len(self.user_vec) > self.threshold:
+        recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
+        response += self.get_response("recommend") % recommendations[0][0]
+        response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]) + "!"
+      else:
+        response += self.get_response("prompt")
+
+
       # response = 'You typed the movie %s' % movie_titles[0]
       # print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
+      print "USER VEC: %s" % self.user_vec
       return response
 
     def movie_in_db(self, movie_name):
@@ -217,23 +236,37 @@ class Chatbot:
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
+      
+      
+      # Calculate the input vector similarity against all other movies.
+      for i in u:
+        for j, user_ratings in enumerate(self.ratings):
+          if i != j:
+            similarity = self.distance(self.ratings[:,i], self.ratings[:,j]) #item-item similarity: dot product of movie i and movie j
+            self.recommendations[j][0] += similarity * u[i] #multiply by user's rating for movie i
+            self.recommendations[j][1] = j 
+      sortedScores = sorted(self.recommendations, reverse=True)
+      recommendations = []
+      #return list of k movie titles
+      for i in range(0, self.k):
+        recommendations.append(self.titles[sortedScores[i][1]])
+      """
       # Keep track of similarity and users.
       bestSimilarity = -1.0
       bestUser = 0
-      # Calculate the input vector similarity against all other movies.
       for i, user_ratings in enumerate(self.ratings):
         similarity = self.distance(u, user_ratings)
         if similarity > bestSimilarity:
           bestSimilarity = similarity
-          bestUser = i
-      
+          bestUser = i     
       # Recommend the movies that are not currently liked by input vector.
       recommendations = []
       bestUser_ratings = self.ratings[bestUser]
       for i, input_rating in enumerate(u):
         if input_rating == 0 and bestUser_ratings[i] != 0:
           recommendations.append(self.title_names[i])
-      recommendations = sorted(recommendations, reverse=True)
+      """
+      
       return recommendations
 
     #############################################################################
