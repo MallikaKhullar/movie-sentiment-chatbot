@@ -28,7 +28,7 @@ class REPL(cmd.Cmd):
     prompt = '> '
     greeting = chatbot.greeting()
     intro = chatbot.intro() + '\n' + bot_prompt + greeting
-    debug = False
+    debug = True
 
     doc_header = ''
     misc_header = ''

@@ -25,24 +25,33 @@ class Chatbot:
     # `moviebot` is the default chatbot. Change it to your chatbot's name       #
     #############################################################################
     def __init__(self, is_turbo=False):
-      self.name = 'moviebot'
+      self.name = 'MovieBot'
       self.is_turbo = is_turbo
       #get more complete list of negations
       self.negation = {'didn\'t', 'never', 'not', 'don\'t'}
       # Responses 
       self.responses = { 
-        'no_movies_found': ["You didn't mention any movies. Could you suggest one? "],
-        'prompt':["Tell me about another movie you have seen. ", "Could you tell me about another movie? "],
-        'like_movie':["You liked %s. ", "So you liked %s, huh? "],
-        'dislike_movie':["You did not like %s. ", "Yeah, I wasn't a huge fan of %s either. "],
-        'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s. "],
+        'no_movies_found': ["Hmmm you didn't mention any movies, %s. Could you suggest one? ", "Let's get back on track, %s.",  
+                          "Are you trying to distract me, %s?", "%s, I'd really appreciate it if you told me about some movies.",
+                          "Let's get back on track. Movies are serious business, %s.", "Are you making fun of me, %s? "],
+        'prompt':["Tell me about another movie! ", "Could you tell me about another movie? ", "What other movies have you liked/disliked? ", 
+                "Just a couple more, and I'll find the perfect movie for you :)", "Throw me another one!", "Another?", "Tell me more! Tell me more! (like does he have a car?)"],
+        'like_movie':["You liked %s. ", "Yesss, more love for %s! ", "So you liked %s, huh? ", "Haha yeah %s was awesome! ", "SAME %s is my favorite movie! ", "LOVE IT. %s is great. ",
+                      "%s is my favorite! ", "Don't hate me, but I actually wasn't a huge fan of %s! "],
+        'dislike_movie':["Oh no, I loved %s! Are you sure we're friends? ", "Yeah, I actually wasn't a huge fan of %s either. ", 
+                      "Don't be a hater! Someone's sister worked really hard on %s! ", "It makes me really sad when people don't like movies. Especially %s.",
+                       "All movies deserve love, even %s :(", "Don't be so negative, the %s team worked really hard on it."],
+        'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s. ", "Oops, not sure if I understood right. Did you like %s?", 
+                              "Sorry, did you like or dislike %s?", "Okay, and did you like %s or not?", "Sorry, I can't tell if you liked %s or not... did you?"],
         'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen. "],
-        'fake_movie':["I'm sorry, I don't recognize that movie. Could you tell me about a different one? "],
+        'fake_movie':["I'm so sorry, I've never seen that movie! Could you tell me about a different one? ", "Are you sure that's a real movie?"
+                  "This is so embarrassing. I've actually never seen that one :/", "Haha are you trying to trick me?", 
+                  "Don't hate me, but I don't know that one... Try another?"],
         'too_many_movies':["That's a little too much at once! How about you tell me about them one at a time?", 
-                      "Sorry, I can only process one movie at a time."],
+                      "Sorry, I can only process one movie at a time. ", "Whoa whoa whoa slow down there! One at a time please :)"],
         'multiple_matches':["I found a couple movies, but I'm not sure which one you mean! They are: %s \n\tWhich one did you want to tell me about?"],
-        'recommend':["I know one I think you'd like! You should check out %s. ", "I think you would enjoy %s. ", 
-                    "Have you ever seen %s? It seems right up your alley! "]
+        'recommend':["I know one I think you'd like, %s! You should check out %s. ", "%s, I think you would enjoy %s. ", 
+                    "%s. Have you ever seen %s? It seems right up your alley! ", "%s, you HAVE to see %s. "]
       }
 
       self.stemmedSentiment = {}
@@ -57,6 +66,7 @@ class Chatbot:
       self.recommendations = [[0, 0]] * len(self.ratings[0])
       #list containing memory of previous interaction
       self.memory = []
+      self.user_name = ""
 
     #############################################################################
     # 1. WARM UP REPL
@@ -68,7 +78,7 @@ class Chatbot:
       # TODO: Write a short greeting message                                      #
       #############################################################################
 
-      greeting_message = 'How can I help you?'
+      greeting_message = "Hey! I\'m %s and I\'m here to help you find some good movies. For starters, could you tell me your name? Just your first name is fine, I like to keep it casual :)" % self.name
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -82,7 +92,7 @@ class Chatbot:
       # TODO: Write a short farewell message                                      #
       #############################################################################
 
-      goodbye_message = 'Have a nice day!'
+      goodbye_message = 'Bye bye now! Have fun storming the castle!'
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -107,6 +117,10 @@ class Chatbot:
       # highly recommended                                                        #
       #############################################################################
 
+      print "memory: %s" % self.memory
+      if self.user_name == "":
+        return self.set_name(input)
+
       response = ""
       movie_titles = []
       if self.is_turbo == True:
@@ -119,24 +133,28 @@ class Chatbot:
         if not movie_titles:
           #if list of movies in memory: disambiguating a sentence
           if len(self.memory) > 2:
-            for i in range(1, len(self.memory)): #first index is user input
-              m = self.titles[self.memory[i]][0]
-              if re.search(input.lower(), m.lower()): #handle capitalization errors
-                movie_titles.append(m) #make that movie the current movie title (maybe fix later, too general)
-                print "movie titles : %s" % movie_titles
-                break
+            movie_titles = self.disambiguate(input)
+            self.memory = [self.memory[0]]
           #check for reference to previous movie
           elif len(self.memory) > 1:
             m = self.titles[self.memory[1]][0] #most recently-mentioned movie
             movie_titles.append(m)
-            self.memory[0] = input
+            if 'yes' in input.lower():
+              self.memory[0] = "like"
+            elif 'no' in input:
+              self.memory[0] = "dislike"
+            else:
+              self.memory[0] = input
+            print "memory: %s" % self.memory
+
           else:
             print ""
             #check for movie title without quotes
           if not movie_titles:
-            return self.get_response("no_movies_found")
+            return self.get_response("no_movies_found") % self.user_name
         else:
           self.memory = [input]
+          print "memory: %s" % self.memory
         
         if len(movie_titles) > 1:
           return self.get_response("too_many_movies")
@@ -152,8 +170,9 @@ class Chatbot:
           response = self.get_response("multiple_matches")
           options = ""
           for i, m in enumerate(movie_entry):
-            options += "\n\t\t%d) " % (i+1) + self.colloquialize(self.titles[m][0])
+            options += "\n\t\t%d) " % (i+1) + self.titles[m][0]
           self.memory += movie_entry
+          print "memory: %s" % self.memory
           return response % options
 
         # Associate the movie title with a sentiment score
@@ -161,10 +180,10 @@ class Chatbot:
         self.user_vec[movie_entry[0]] = score - (score - 1) # movie_id -> binarized sentiment score
         print "score: %d, uservec score: %d" % (score, self.user_vec[movie_entry[0]])
         
-        #standardize movie titles
         movie_name = self.colloquialize(self.titles[movie_entry[0]][0])
         if score == 0:
           self.memory.append(movie_entry[0])
+          print "memory: %s" % self.memory
           response = self.get_response("sentiment_clarification") % movie_name
         else:
           if score > 0:
@@ -175,11 +194,28 @@ class Chatbot:
 
       if len(self.user_vec) > self.threshold:
         recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
-        response += self.get_response("recommend") % self.colloquialize(recommendations[0][0])
+        response = self.get_response("recommend") % (self.user_name, self.colloquialize(recommendations[0][0]))
         response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]).lower() + "!"
 
       print "USER VEC: %s" % self.user_vec
       return response
+
+    
+
+    #############################################################################
+    # 3. Movie Recommendation helper functions                                  #
+    #############################################################################
+
+    def disambiguate(self, input):
+      movie_titles = []
+      for i in range(1, len(self.memory)): #first index is user input
+        m = self.titles[self.memory[i]][0]
+        print "input: %s m: %s" % (input, m)
+        if re.search(input.lower(), m.lower()): #handle capitalization errors
+          movie_titles.append(m) #make that movie the current movie title (maybe fix later, too general)
+          print "movie titles : %s" % movie_titles
+          break
+      return movie_titles
 
     def movie_in_db(self, movie_name):
       """Returns movie entry with the movie_name in our database."""
@@ -222,20 +258,20 @@ class Chatbot:
           elif (isNeg and self.stemmedSentiment[word] == 'neg') or (not isNeg and self.stemmedSentiment[word] == 'pos'):
             score += 1
           if isNeg:
-          #check how we tokenize
+          #TODO check how we tokenize
             isNeg = False
       return score
 
-
-    #############################################################################
-    # 3. Movie Recommendation helper functions                                  #
-    #############################################################################
 
     def colloquialize(self, title):
       title = re.sub("\([^\)]+\)", "", title) #gets rid of year
       if ", The" in title:
         title = "The " + re.sub(", The", "", title)
       return title.strip()
+
+    def set_name(self, input):
+      self.user_name = input
+      return "Hey, %s! Nice to meet you! Now that we've ~hit it off~, why don't you tell me about a movie you've seen?" % self.user_name
 
 
     def read_data(self):
@@ -328,11 +364,12 @@ class Chatbot:
     #############################################################################
     def intro(self):
       return """
-      Your task is to implement the chatbot as detailed in the PA6 instructions.
-      Remember: in the starter mode, movie names will come in quotation marks and
-      expressions of sentiment will be simple!
-      Write here the description for your own chatbot!
-      """
+      This is MovieBot! She's a total movie buff, and loves giving putting her encyclopedic
+      knowledge of all things cinematic to good use.  She loves all movies equally and 
+      gets sad if people don't like them, so be nice! 
+      Please put movie titles in quotes, and say how you feel about the movie. After about %d
+      suggestions, Moviebot will give you her expert advice!
+      """ % self.threshold
 
 
     #############################################################################
