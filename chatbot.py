@@ -57,13 +57,12 @@ class Chatbot:
       self.stemmedSentiment = {}
       self.p = PorterStemmer()
       self.read_data()
-      #self.user_vec = [0] * len(self.ratings[0])
       self.user_vec = collections.defaultdict(lambda: 0)
       #constant value for how many data points needed for a recommendation
       self.threshold = 1
       #constant value for number of movies to recommend
       self.k = 1
-      self.recommendations = [[0, 0]] * len(self.ratings[0])
+      self.recommendations = [(0,0)] * len(self.ratings)
       #list containing memory of previous interaction
       self.memory = []
       self.user_name = ""
@@ -100,7 +99,6 @@ class Chatbot:
 
       return goodbye_message
 
-
     #############################################################################
     # 2. Modules 2 and 3: extraction and transformation                         #
     #############################################################################
@@ -118,6 +116,8 @@ class Chatbot:
       #############################################################################
 
       print "memory: %s" % self.memory
+
+      # Set the user name if not yet set!
       if self.user_name == "":
         return self.set_name(input)
 
@@ -126,7 +126,7 @@ class Chatbot:
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
-        # Pull the movie titles from the user input
+        ###### Pull the movie titles from the user input ######
         movie_titles = self.get_movie_names(input)
         
         # Nothing found within quotations that is a movie
@@ -146,26 +146,30 @@ class Chatbot:
             else:
               self.memory[0] = input
             print "memory: %s" % self.memory
-
           else:
             print ""
-            #check for movie title without quotes
+          #still no movies found in memory!
           if not movie_titles:
             return self.get_response("no_movies_found") % self.user_name
+        # Place phrase with movie into memory
         else:
           self.memory = [input]
           print "memory: %s" % self.memory
         
+        ###### See if the movie title is in our database ######
+
+        # Get a single movie from the user input
         if len(movie_titles) > 1:
           return self.get_response("too_many_movies")
-        
-        # See if the movie title is in our database
         movie_name = movie_titles[0] # just use the first movie found for now
+        
+        # Get the full movie entry (with genre) from our database
         movie_entry = self.movie_in_db(movie_name)
         print "movie_in_db returned: %s" % movie_entry
-        if len(movie_entry) == 0:
+        if len(movie_entry) == 0: #not a real movie!
           return self.get_response("fake_movie")
 
+        # Found ~multiple~ matches in the database
         if len(movie_entry) > 1:
           response = self.get_response("multiple_matches")
           options = ""
@@ -175,12 +179,14 @@ class Chatbot:
           print "memory: %s" % self.memory
           return response % options
 
-        # Associate the movie title with a sentiment score
+        ###### Associate the movie title with a sentiment score ######
+
         score = self.get_sentiment_score(self.memory[0])
-        self.user_vec[movie_entry[0]] = score - (score - 1) # movie_id -> binarized sentiment score
+        # self.user_vec[movie_entry[0]] = score - (score - 1) # movie_id -> binarized sentiment score
+        self.user_vec[movie_entry[0]] = score # movie_id -> binarized sentiment score
         print "score: %d, uservec score: %d" % (score, self.user_vec[movie_entry[0]])
         
-        movie_name = self.colloquialize(self.titles[movie_entry[0]][0])
+        movie_name = self.colloquialize(self.titles[movie_entry[0]][0]) #fix ", The" endings
         if score == 0:
           self.memory.append(movie_entry[0])
           print "memory: %s" % self.memory
@@ -192,15 +198,14 @@ class Chatbot:
             response = self.get_response("dislike_movie") % movie_name
           response += self.get_response("prompt")
 
+      # Check if user has rated more movies than the threshold
       if len(self.user_vec) > self.threshold:
         recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
-        response = self.get_response("recommend") % (self.user_name, self.colloquialize(recommendations[0][0]))
-        response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]).lower() + "!"
+        response = self.get_response("recommend") % (self.user_name, self.colloquialize(recommendations[0][0])) # title information
+        response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]).lower() + "!"                   # genre information
 
       print "USER VEC: %s" % self.user_vec
       return response
-
-    
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
@@ -262,17 +267,17 @@ class Chatbot:
             isNeg = False
       return score
 
-
     def colloquialize(self, title):
+      """Moves the ", The" to the front of a movie title"""
       title = re.sub("\([^\)]+\)", "", title) #gets rid of year
       if ", The" in title:
         title = "The " + re.sub(", The", "", title)
       return title.strip()
 
     def set_name(self, input):
+      """Sets the user name"""
       self.user_name = input
       return "Hey, %s! Nice to meet you! Now that we've ~hit it off~, why don't you tell me about a movie you've seen?" % self.user_name
-
 
     def read_data(self):
       """Reads the ratings matrix from file"""
@@ -281,6 +286,7 @@ class Chatbot:
       # movie i by user j
       self.titles, self.ratings = ratings()
       self.title_names = [title for title, genre in self.titles]
+      self.title_genres = [genre for title, genre in self.titles]
       self.binarize() # binarizes the ratings
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
@@ -293,6 +299,7 @@ class Chatbot:
 
     def binarize(self):
       """Modifies the ratings matrix to make all of the ratings binary"""
+
       for i,user_ratings in enumerate(self.ratings):
         # Loop through each list of ratings for a given movie
         for j,movie_rating in enumerate(user_ratings):
@@ -302,49 +309,73 @@ class Chatbot:
             self.ratings[i][j] = -1
           else:
             self.ratings[i][j] = 0
+      # self.ratings[i][np.where(user_ratings>3.0)] = 1
+      # self.ratings[i][np.where(user_ratings>0.0)] = -1
+      # self.ratings[i][np.where(user_ratings==0.0)] = 0  
 
     def distance(self, u, v):
-      """Calculates a given distance function between vectors u and v"""
+      """Calculates the cosine distance function between vectors u and v"""
       # Note: you can also think of this as computing a similarity measure
-      dp = 0
-      for a, b in zip(u, v):
-        dp += a * b
-      return dp
+      a = np.array(u)
+      b = np.array(v)
+      return np.dot(a, b)/((np.linalg.norm(a)*np.linalg.norm(b))+1e-7)
+
+    # def recommend_content(self, u):
+    #   alpha = 1.0
+    #   for i in u: # movie i
+    #     for j, user_ratings in enumerate(self.ratings): # movie j
+    #       if i != j:
+    #         input_genre = self.title_genres[i].split("|")
+    #         movie_genre = self.title_genres[j].split("|")
+
+    #         # Genre characteristics
+    #         num_shared_genre = len(set(input_genre) & set(movie_genre))
+    #         input_length = len(input_genre)
+    #         movie_length = len(movie_length)
+
+    #         similarity = num_shared_genre/(math.sqrt(input_length)*math.sqrt(movie_length))
 
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
       
-      
       # Calculate the input vector similarity against all other movies.
-      for i in u:
-        for j, user_ratings in enumerate(self.ratings):
+      for i in u: # each movie suggestion in user input {232: 1, 423:-1}
+        for j, movie_user_ratings in enumerate(self.ratings): 
           if i != j:
-            similarity = self.distance(self.ratings[:,i], self.ratings[:,j]) #item-item similarity: dot product of movie i and movie j
-            self.recommendations[j][0] += similarity * u[i] #multiply by user's rating for movie i
-            self.recommendations[j][1] = j 
-      sortedScores = sorted(self.recommendations, reverse=True)
+            # Calculate item-item collaborative filtering similarity
+            collab_similarity = self.distance(self.ratings[:,i], self.ratings[:,j]) #item-item similarity: dot product of movie i and movie j
+            # print "movie %s,%s collab_similarity = %s" % (i,j,collab_similarity)
+
+            # Calculate the content-based similarity
+            input_genre = self.title_genres[i].split("|")
+            movie_genre = self.title_genres[j].split("|")
+
+            # Genre characteristics
+            num_shared_genre = len(set(input_genre) & set(movie_genre))
+            input_length = len(input_genre)
+            movie_length = len(movie_genre)
+
+            content_similarity = num_shared_genre/(math.sqrt(input_length)*math.sqrt(movie_length))
+            # print "movie %s,%s content_similarity = %s" % (i,j,content_similarity)
+            # print "-------------------"
+
+            # Calculate the weighted similarity
+            alpha = 0.6
+            weighted_similarity = (1-alpha)*collab_similarity + (alpha)*content_similarity
+
+            result = self.recommendations[j][0] + weighted_similarity * u[i] #multiply by user's rating for movie i
+            self.recommendations[j] = (result, j)
+      
+      sortedScores = sorted(self.recommendations, key=lambda tup: tup[0], reverse=True) #sort by score
+      # for score in sortedScores:
+      #   print score
+
       recommendations = []
       #return list of k movie titles
       for i in range(0, self.k):
         recommendations.append(self.titles[sortedScores[i][1]])
-      """
-      # Keep track of similarity and users.
-      bestSimilarity = -1.0
-      bestUser = 0
-      for i, user_ratings in enumerate(self.ratings):
-        similarity = self.distance(u, user_ratings)
-        if similarity > bestSimilarity:
-          bestSimilarity = similarity
-          bestUser = i     
-      # Recommend the movies that are not currently liked by input vector.
-      recommendations = []
-      bestUser_ratings = self.ratings[bestUser]
-      for i, input_rating in enumerate(u):
-        if input_rating == 0 and bestUser_ratings[i] != 0:
-          recommendations.append(self.title_names[i])
-      """
-      
+            
       return recommendations
 
     #############################################################################
