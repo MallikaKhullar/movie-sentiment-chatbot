@@ -38,6 +38,9 @@ class Chatbot:
         'sentiment_clarification': ["I'm sorry, I'm not quite sure if you liked %s. "],
         'movie_clarification':["Sorry, I don't understand. Tell me about a movie that you have seen. "],
         'fake_movie':["I'm sorry, I don't recognize that movie. Could you tell me about a different one? "],
+        'too_many_movies':["That's a little too much at once! How about you tell me about them one at a time?", 
+                      "Sorry, I can only process one movie at a time."],
+        'multiple_matches':["I found a couple movies, but I'm not sure which one you mean! They are: %s \n\tWhich one did you want to tell me about?"],
         'recommend':["I know one I think you'd like! You should check out %s. ", "I think you would enjoy %s. ", 
                     "Have you ever seen %s? It seems right up your alley! "]
       }
@@ -52,6 +55,8 @@ class Chatbot:
       #constant value for number of movies to recommend
       self.k = 1
       self.recommendations = [[0, 0]] * len(self.ratings[0])
+      #list containing memory of previous interaction
+      self.memory = []
 
     #############################################################################
     # 1. WARM UP REPL
@@ -101,8 +106,9 @@ class Chatbot:
       # calling other functions. Although modular code is not graded, it is       #
       # highly recommended                                                        #
       #############################################################################
-      
+
       response = ""
+      movie_titles = []
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
@@ -111,51 +117,82 @@ class Chatbot:
         
         # Nothing found within quotations that is a movie
         if not movie_titles:
-          return self.get_response("no_movies_found")
+          #if list of movies in memory: disambiguating a sentence
+          if len(self.memory) > 2:
+            for i in range(1, len(self.memory)): #first index is user input
+              m = self.titles[self.memory[i]][0]
+              if re.search(input.lower(), m.lower()): #handle capitalization errors
+                movie_titles.append(m) #make that movie the current movie title (maybe fix later, too general)
+                print "movie titles : %s" % movie_titles
+                break
+          #check for reference to previous movie
+          elif len(self.memory) > 1:
+            m = self.titles[self.memory[1]][0] #most recently-mentioned movie
+            movie_titles.append(m)
+            self.memory[0] = input
+          else:
+            print ""
+            #check for movie title without quotes
+          if not movie_titles:
+            return self.get_response("no_movies_found")
+        else:
+          self.memory = [input]
+        
+        if len(movie_titles) > 1:
+          return self.get_response("too_many_movies")
         
         # See if the movie title is in our database
         movie_name = movie_titles[0] # just use the first movie found for now
         movie_entry = self.movie_in_db(movie_name)
-        if movie_entry is None:
+        print "movie_in_db returned: %s" % movie_entry
+        if len(movie_entry) == 0:
           return self.get_response("fake_movie")
 
-        # Associate the movie title with a sentiment score
-        score = self.get_sentiment_score(input)
-        movie_index = self.titles.index(movie_entry)
-        self.user_vec[movie_index] = score - (score - 1) # movie_id -> binarized sentiment score
-        
-        #print recommendations
+        if len(movie_entry) > 1:
+          response = self.get_response("multiple_matches")
+          options = ""
+          for i, m in enumerate(movie_entry):
+            options += "\n\t\t%d) " % (i+1) + self.colloquialize(self.titles[m][0])
+          self.memory += movie_entry
+          return response % options
 
-        # TODO: Play around with thresholds for like/dislike
+        # Associate the movie title with a sentiment score
+        score = self.get_sentiment_score(self.memory[0])
+        self.user_vec[movie_entry[0]] = score - (score - 1) # movie_id -> binarized sentiment score
+        print "score: %d, uservec score: %d" % (score, self.user_vec[movie_entry[0]])
+        
+        #standardize movie titles
+        movie_name = self.colloquialize(self.titles[movie_entry[0]][0])
         if score == 0:
+          self.memory.append(movie_entry[0])
           response = self.get_response("sentiment_clarification") % movie_name
-        elif score > 0:
-          response = self.get_response("like_movie") % movie_name
         else:
-          response = self.get_response("dislike_movie") % movie_name
+          if score > 0:
+            response = self.get_response("like_movie") % movie_name
+          else:
+            response = self.get_response("dislike_movie") % movie_name
+          response += self.get_response("prompt")
 
       if len(self.user_vec) > self.threshold:
         recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
-        response += self.get_response("recommend") % recommendations[0][0]
-        response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]) + "!"
-      else:
-        response += self.get_response("prompt")
+        response += self.get_response("recommend") % self.colloquialize(recommendations[0][0])
+        response += " It's a " + re.sub("\|", " and a ", recommendations[0][1]).lower() + "!"
 
-
-      # response = 'You typed the movie %s' % movie_titles[0]
-      # print "Movie: %s, Vector: %s" % (movie_name, self.user_vec)
       print "USER VEC: %s" % self.user_vec
       return response
 
     def movie_in_db(self, movie_name):
       """Returns movie entry with the movie_name in our database."""
-      movie_entry = None # entry = (movie_name, genres)
-      movie_name = re.sub("(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )?", "(?:\w+\W+)?", movie_name) #allow for misuse of articles
-      for movie in self.titles:
+      movie_entry = []
+      movie_name = re.sub("[\(\)]", ".", movie_name) #replace parentheses with "." to avoid bugs in regex
+      movie_name = "^" + re.sub("^(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )", "(?:\w+\W+)?", movie_name) #allow for misuse of articles
+      print "movie name: %s" % movie_name
+      for i, movie in enumerate(self.titles):
         # Found the movie in our movie database!
-        if re.search(movie_name.lower(), movie[0].lower()): #to handle improper capitalizations
-          movie_entry = movie
-          break
+        if re.search(movie_name.lower(), movie[0].lower()): #handle improper capitalizations
+          movie_entry.append(i)
+          print "appending %s" % movie[0]
+      print "movie entry = %s" % movie_entry
       return movie_entry
 
     def get_response(self, key):
@@ -164,37 +201,42 @@ class Chatbot:
 
     def get_movie_names(self, input):
       """Pulls all movie names inside quotations from the input."""
-      #movie_regex = r"\"((?:\w+\W*)*)\""
-      movie_regex = r"\"(.+)\""
+      movie_regex = r"\"([^\"]+)\""
       return re.findall(movie_regex, input)
 
     def get_sentiment_score(self, input):
       """Get the sentiment score of a full phrase."""
+      print input
       score = 0
-      line = input.split()
+      line = re.sub("\"[^\"]+\"", "", input)
+      line = line.split()
       isNeg = False
       for word in line:
-        # print word
         if word in self.negation:
           isNeg = True
           continue
         word = self.p.stem(word)
-        if word in self.sentiment:
-          if (isNeg and self.sentiment[word] == 'pos') or (not isNeg and self.sentiment[word] == 'neg'):
+        if word in self.stemmedSentiment:
+          if (isNeg and self.stemmedSentiment[word] == 'pos') or (not isNeg and self.stemmedSentiment[word] == 'neg'):
             score -= 1
-          elif (isNeg and self.sentiment[word] == 'neg') or (not isNeg and self.sentiment[word] == 'pos'):
+          elif (isNeg and self.stemmedSentiment[word] == 'neg') or (not isNeg and self.stemmedSentiment[word] == 'pos'):
             score += 1
-          # print score
           if isNeg:
           #check how we tokenize
             isNeg = False
-      # print score
       return score
 
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
     #############################################################################
+
+    def colloquialize(self, title):
+      title = re.sub("\([^\)]+\)", "", title) #gets rid of year
+      if ", The" in title:
+        title = "The " + re.sub(", The", "", title)
+      return title.strip()
+
 
     def read_data(self):
       """Reads the ratings matrix from file"""
