@@ -49,6 +49,7 @@ class Chatbot:
                   "Don't hate me, but I don't know that one... Try another?"],
         'too_many_movies':["That's a little too much at once! How about you tell me about them one at a time?", 
                       "Sorry, I can only process one movie at a time. ", "Whoa whoa whoa slow down there! One at a time please :)"],
+        'clarify_movie':["Did you mean %s?"],
         'multiple_matches':["I found a couple movies, but I'm not sure which one you mean! They are: %s \n\tWhich one did you want to tell me about?"],
         'recommend':["I know one I think you'd like, %s! You should check out %s. ", "%s, I think you would enjoy %s. ", 
                     "%s. Have you ever seen %s? It seems right up your alley! ", "%s, you HAVE to see %s. "]
@@ -63,6 +64,7 @@ class Chatbot:
       #constant value for number of movies to recommend
       self.k = 1
       self.recommendations = [(0,0)] * len(self.ratings)
+      self.spell_threshold = 4 # max valid edit distance
       #list containing memory of previous interaction
       self.memory = []
       self.user_name = ""
@@ -161,15 +163,22 @@ class Chatbot:
         # Get a single movie from the user input
         if len(movie_titles) > 1:
           return self.get_response("too_many_movies")
-        movie_name = movie_titles[0] # just use the first movie found for now
+        movie_name = movie_titles[0] # just use the first inputted movie for now
         
         # Get the full movie entry (with genre) from our database
         movie_entry = self.movie_in_db(movie_name)
         print "movie_in_db returned: %s" % movie_entry
-        if len(movie_entry) == 0: #not a real movie!
-          return self.get_response("fake_movie")
+        if len(movie_entry) == 0:
+          # Try to spell check 'movie_name'
+          candidate_string, spell_score = self.bestSpellCandidate(movie_name)
+          if spell_score <= self.spell_threshold:
+            movie_entry = self.movie_in_db(candidate_string)
+            #TODO: confirm movie is the spell checked word!
+            # return self.get_response("clarify_movie")
+          else:  #not a real movie!
+            return self.get_response("fake_movie")
 
-        # Found ~multiple~ matches in the database
+        # Found ~multiple~ movie matches in the database
         if len(movie_entry) > 1:
           response = self.get_response("multiple_matches")
           options = ""
@@ -235,6 +244,42 @@ class Chatbot:
           print "appending %s" % movie[0]
       print "movie entry = %s" % movie_entry
       return movie_entry
+
+    def bestSpellCandidate(self, input_movie):
+      input_movie = input_movie.lower().strip()
+      best_title = ""
+      best_edit_distance = float("inf")
+      for title in self.title_names:
+        title = re.sub("\([^\)]+\)", "", title).lower().strip() #remove year and lowercase
+        if ", the" in title:
+          title = "the " + re.sub(", the", "", title) # remove ", the" to the front
+        edit_distance = self.editDistance(input_movie, title, len(input_movie), len(title), 0)
+        # print input_movie, title, edit_distance
+        if edit_distance < best_edit_distance: #search for minimum edit distance
+          best_title = title
+          best_edit_distance = edit_distance
+      return best_title, best_edit_distance
+
+    def editDistance(self, s1, s2, m, n, level):
+      """Calculates the edit distance between strings"""
+      # Optimize: Exit Early!
+      if level >= self.spell_threshold:
+        return min(m, n)
+
+      # Base Case: Empty string, remove all characters of other string
+      if m == 0:
+          return n
+      if n == 0:
+        return m
+
+      # Recursive Case: Calculate Edit Distance
+      if s1[m-1] == s2[n-1]:    #characters are same
+        return self.editDistance(s1, s2, m-1, n-1, level+1)
+      else:                     #last characters are not same
+        return 1 + min(self.editDistance(s1, s2, m,   n-1, level+1),      # insert
+                       self.editDistance(s1, s2, m-1, n,   level+1),      # deletion
+                       self.editDistance(s1, s2, m-1, n-1, level+1)     # substitution.
+                       )
 
     def get_response(self, key):
       """Returns a random response for the given key."""
@@ -320,24 +365,9 @@ class Chatbot:
       b = np.array(v)
       return np.dot(a, b)/((np.linalg.norm(a)*np.linalg.norm(b))+1e-7)
 
-    # def recommend_content(self, u):
-    #   alpha = 1.0
-    #   for i in u: # movie i
-    #     for j, user_ratings in enumerate(self.ratings): # movie j
-    #       if i != j:
-    #         input_genre = self.title_genres[i].split("|")
-    #         movie_genre = self.title_genres[j].split("|")
-
-    #         # Genre characteristics
-    #         num_shared_genre = len(set(input_genre) & set(movie_genre))
-    #         input_length = len(input_genre)
-    #         movie_length = len(movie_length)
-
-    #         similarity = num_shared_genre/(math.sqrt(input_length)*math.sqrt(movie_length))
-
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
-      collaborative filtering"""
+      collaborative filtering and a content-based system"""
       
       # Calculate the input vector similarity against all other movies.
       for i in u: # each movie suggestion in user input {232: 1, 423:-1}
@@ -364,8 +394,9 @@ class Chatbot:
             alpha = 0.6
             weighted_similarity = (1-alpha)*collab_similarity + (alpha)*content_similarity
 
-            result = self.recommendations[j][0] + weighted_similarity * u[i] #multiply by user's rating for movie i
-            self.recommendations[j] = (result, j)
+            # Update the weighted score for each user!
+            user_score = self.recommendations[j][0] + weighted_similarity * u[i] #multiply by user's rating for movie i
+            self.recommendations[j] = (user_score, j)
       
       sortedScores = sorted(self.recommendations, key=lambda tup: tup[0], reverse=True) #sort by score
       # for score in sortedScores:
