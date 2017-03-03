@@ -133,6 +133,7 @@ class Chatbot:
         self.memory = [input] #initialize memory
         return self.set_name(input)
 
+      # Handle arbitrary input
       if re.search("can you ([a-zA-Z0-9 ]+)", input.lower()):
         return "Sorry, I can't %s. I'm just a robot!" % re.findall("can you ([a-zA-Z0-9 ]+)", input.lower())[0]
       if re.search("what is ([a-zA-Z0-9 ]+)", input.lower()):
@@ -179,7 +180,16 @@ class Chatbot:
                 self.memory[0] = "dislike"
               print "memory: %s" % self.memory
               self.clarification = False
-
+          """
+          if not movie_titles:
+            #process movie titles w/o quotes
+            no_quotes = "([A-Z](?:\w+\W?)+?)(?:is|was|will|$)"
+            I_regex = "(I (?:\w+\W?)+?)(?:is|was|will|$)"
+            movie_titles = re.findall(no_quotes, input)
+            if not movies:
+              movie_titles = re.findall(I_regex, input)
+            self.memory[0] = input
+          """
         # Place phrase with movie into memory
         else:
           self.memory = [input]
