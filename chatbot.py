@@ -133,6 +133,8 @@ class Chatbot:
         self.memory = [input] #initialize memory
         return self.set_name(input)
 
+
+
       response = ""
       movie_titles = []
       if self.is_turbo == True:
@@ -160,6 +162,11 @@ class Chatbot:
 
         # Nothing found within quotations that is a movie
         elif not movie_titles:
+          #haven't tested yet
+          if re.search("can you (.*)", input.lower()):
+            return "So sorry, I can't %s :(" % re.search("can you (.*)", input.lower())
+          if re.search("what is (.*)", input.lower()):
+            return "I think %s is a type of animal! I don't really understand non-movies, though." % re.search("what is (.*)", input.lower())
           #check for reference to previous movie
           if len(self.memory) > 1: 
             m = self.titles[self.memory[1]][0] #most recently-mentioned movie title
