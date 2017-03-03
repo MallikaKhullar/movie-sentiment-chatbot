@@ -30,15 +30,16 @@ class Chatbot:
       self.spellCheck = False
       self.clarification = False
       #get more complete list of negations
-      self.negation = {'didn\'t', 'never', 'not', 'don\'t'}
+      self.negation = {'didnt', 'wasnt', 'wont', 'hasnt', 'werent', 'shouldnt', 'cant', 'never', 'not', 'dont'}
       self.intensifiers = {'love', 'hate', 'really', 'very', 'favorite', 'amazing', 'incredible', 'best', 'worst'}
       self.yes = {'yes', 'yeah', 'ya', 'uh-huh'}
       # Responses 
       self.responses = { 
         'no_movies_found': ["Hmmm you didn't mention any movies, %s. Could you suggest one? ", "Let's get back on track, %s.",  
                           "Are you trying to distract me, %s?", "%s, I'd really appreciate it if you told me about some movies.",
-                          "Let's get back on track. Movies are serious business, %s.", "Are you making fun of me, %s? ", "Frankly my dear %s, I don't give a damn.",
-                          "As if, %s!", "That'll do, %s. That'll do.", "You talkin' to me? %s?", "Hey, %s, I'm walking [aka trying to talk about movies] here!"],
+                          "Let's get back on track. Movies are serious business, %s.", "Are you making fun of me, %s? ", 
+                          "Frankly my dear %s, I don't give a damn.", "As if, %s!", "Thanks for letting me know, %s", "That'll do, %s. That'll do.", 
+                          "You talkin' to me? %s?", "Hey, %s, I'm walking [aka trying to talk about movies] here!"],
         'prompt':["Tell me about another movie! ", "Could you tell me about another movie? ", "What other movies have you liked/disliked? ", 
                 "Just a couple more, and I'll find the perfect movie for you :)", "Throw me another one!", "Another?", "Tell me more! Tell me more! (like does he have a car?)"],
         'like_movie':["You liked %s. ", "Yesss, more love for %s! ", "So you liked %s, huh? ", "Haha yeah %s was awesome! ", "SAME %s is my favorite movie! ", "LOVE IT. %s is great. ",
@@ -61,7 +62,11 @@ class Chatbot:
                             "Okay I've got a couple of titles that match that: %s \n\tTell me which one!", "You've got choices! They are: %s\n\tWhich one did you mean?"],
         'recommend':["I know one I think you'd like, %s! You should check out %s. ", "%s, I think you would enjoy %s. ", 
                     "%s. Have you ever seen %s? It seems right up your alley! ", "%s, you HAVE to see %s. ", "Elementary, my dear %s. You should watch %s! ", 
-                    "Hey %s, here's an 'offer you can't refuse'! You should watch %s! "]
+                    "Hey %s, here's an 'offer you can't refuse'! You should watch %s! "],
+        'what_is':["I think %s is a type of animal! I don't really understand non-movies, though.", "I don't know what %s is. But more importantly, what is love?", 
+                    "What is %s?!?!? Wouldn't you like to know!", "What is %s? Who do you think I am, Google?!"],
+        'can_you':["Sorry, I can't %s. I'm just a robot!", "Can YOU %s?", "Well, I can't do EVERYTHING. But yes, I can %s ;)", 
+                  "I'm not sure if I know how to %s. Get back to me in a week! "]
       }
       self.reference_regex = "(?:that (?:movie|one)?|it)"
       self.stemmedSentiment = {}
@@ -130,14 +135,14 @@ class Chatbot:
 
       # Set the user name if not yet set!
       if self.user_name == "":
-        self.memory = [input] #initialize memory
+        self.memory = [input, -1] # initialize memory, -1 to signal no movie in memory
         return self.set_name(input)
 
       # Handle arbitrary input
       if re.search("can you ([a-zA-Z0-9 ]+)", input.lower()):
-        return "Sorry, I can't %s. I'm just a robot!" % re.findall("can you ([a-zA-Z0-9 ]+)", input.lower())[0]
+        return self.get_response('can_you') % re.findall("can you ([a-zA-Z0-9 ]+)", input.lower())[0]
       if re.search("what is ([a-zA-Z0-9 ]+)", input.lower()):
-        return "I think %s is a type of animal! I don't really understand non-movies, though." % re.findall("what is ([a-zA-Z0-9 ]+)", input.lower())[0]
+        return self.get_response('what_is') % re.findall("what is ([a-zA-Z0-9 ]+)", input.lower())[0]
 
       response = ""
       movie_titles = []
@@ -159,7 +164,7 @@ class Chatbot:
         #if list of movies in memory: disambiguating a sentence
         elif len(self.memory) > 2:
           movie_titles = self.disambiguate(input)
-          self.memory = [self.memory[0]] #clear candidate movies from memory, keep sentiment sentence
+          self.memory = [self.memory[0], -1] #clear candidate movies from memory, keep sentiment sentence and -1 placeholder in 1st index
           print "memory after disambiguate: %s" % self.memory
           if len(movie_titles) > 1 or len(movie_titles) == 0:
             return self.get_response("movie_clarification")
@@ -167,7 +172,7 @@ class Chatbot:
         # Nothing found within quotations that is a movie
         elif not movie_titles:
           #check for reference to previous movie
-          if len(self.memory) > 1: 
+          if self.memory[1] is not -1: 
             m = self.titles[self.memory[1]][0] #most recently-mentioned movie title
             self.memory[0] = input
             if re.search(self.reference_regex, input):
@@ -180,32 +185,50 @@ class Chatbot:
                 self.memory[0] = "dislike"
               print "memory: %s" % self.memory
               self.clarification = False
-          """
           if not movie_titles:
-            #process movie titles w/o quotes
-            no_quotes = "([A-Z](?:\w+\W?)+?)(?:is|was|will|$)"
-            I_regex = "(I (?:\w+\W?)+?)(?:is|was|will|$)"
+            # Process movie titles w/o quotes
+            no_quotes = "([A-Z\"](?:\w+\W?)+?)(?:is|was|will|$)"
+            I_regex = "\"?(I (?:\w+\W?)+?)(?:is|was|will|$)"
             movie_titles = re.findall(no_quotes, input)
-            if not movies:
+            if not movie_titles:
               movie_titles = re.findall(I_regex, input)
             self.memory[0] = input
-          """
+          
         # Place phrase with movie into memory
         else:
-          self.memory = [input]
+          self.memory[0] = input
           print "memory: %s" % self.memory
         
         ###### See if the movie title is in our database ######
 
         # Protect against cases we can't handle
         if len(movie_titles) > 1:
-          return self.get_response("too_many_movies")
+          responses = self.multiple_matches(movie_titles)
+          response = ""
+          for r in responses:
+            response += r + "\n\tAlso-- "
+          return response
+          #return self.get_response("too_many_movies")
         if len(movie_titles) == 0:
           return self.get_response("no_movies_found") % self.user_name
         
         movie_name = movie_titles[0] # get name of movie
-        
-        # Get the full movie entry (with genre) from our database
+        response = self.respond(movie_name)
+
+      # Recommend a movie!
+      if len(self.user_vec) > self.threshold:
+        recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
+        rec = recommendations[0]
+        response = self.get_response("recommend") % (self.user_name, self.colloquialize(rec[0])) # title information
+        response += " It's a " + re.sub("\|.*", "", rec[1]).lower() + "!" #genre information
+      print "USER VEC: %s" % self.user_vec
+      return response
+
+    #############################################################################
+    # 3. Movie Recommendation helper functions                                  #
+    #############################################################################
+    def respond(self, movie_name):
+              # Get the full movie entry (with genre) from our database
         movie_entry = self.movie_in_db(movie_name)
         print "movie_in_db returned: %s" % movie_entry
         #Spell check 'movie_name' if no results
@@ -237,8 +260,10 @@ class Chatbot:
         self.user_vec[movie_entry[0]] = score # movie_id -> sentiment score
         print "score: %d, uservec score: %d" % (score, self.user_vec[movie_entry[0]])
         movie_name = self.colloquialize(self.titles[movie_entry[0]][0]) 
-        if not movie_entry[0] in self.memory:
-          self.memory.append(movie_entry[0])
+        print "movie_name: %s" % movie_name
+        self.memory[1] = movie_entry[0]
+        #if not movie_entry[0] in self.memory:
+        #  self.memory.append(movie_entry[0])
 
         # Print responses
         if score == 0:
@@ -251,23 +276,35 @@ class Chatbot:
           else:
             response = self.get_response("dislike_movie") % movie_name
           response += self.get_response("prompt")
+        return response
 
-      # Recommend a movie!
-      if len(self.user_vec) > self.threshold:
-        recommendations = self.recommend(self.user_vec) # only calculate recommedations when about to make a recommendation
-        rec = recommendations[0]
-        response = self.get_response("recommend") % (self.user_name, self.colloquialize(rec[0])) # title information
-        response += " It's a " + re.sub("\|.*", "", rec[1]).lower() + "!" #genre information
-      print "USER VEC: %s" % self.user_vec
-      return response
+    # Works reliably for double input, can only handle single-sentiment for input > 2
+    def multiple_matches(self, movie_titles):
+      statement = self.memory[0]
+      responses = []
+      for movie in movie_titles:
+        statement = re.sub(movie, "", statement)
+      same_sentiment_re = "(?:(?:n?either)?.+n?or|(?:both)?.+and)"
+      opposite_sentiment_re = "^(.*),? ?but"
+      sentiments = []
+      if re.search(same_sentiment_re, statement):
+        sentiments = [statement] * len(movie_titles)
+      elif re.search(opposite_sentiment_re, statement):
+        sentiments.append(re.findall(opposite_sentiment_re, statement)[0])
+        sentiments += [re.sub(" ", " not ", sentiments[0])] * (len(movie_titles)-1)
+      print "sentiments: %s" % sentiments
+      for i, movie in enumerate(movie_titles):
+        print "curr movie: %s" % movie
+        self.memory[0] = sentiments[i]
+        responses.append(self.respond(movie))
+      if not responses:
+        responses = [self.get_response('movie_clarification')]
+      return responses
 
-    #############################################################################
-    # 3. Movie Recommendation helper functions                                  #
-    #############################################################################
 
     def disambiguate(self, input):
       movie_titles = []
-      for i in range(1, len(self.memory)): #first index is user input
+      for i in range(2, len(self.memory)): #first index is user input
         m = self.titles[self.memory[i]][0]
         input = re.sub("[^A-Za-z0-9 ]", "", input) #handle quotes, punctuation
         input = re.sub("^(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )", "(?:\w+\W+)?", input) #handle extra articles
@@ -358,11 +395,11 @@ class Chatbot:
       no_quotes = "([A-Z](?:\w+\W?)+?)(?:is|was|will|$)"
       I_regex = "(I (?:\w+\W?)+?)(?:is|was|will|$)" #last resort, in case of movie title starting with "I"
       movies = re.findall(movie_regex, input)
-      if not movies:
-        movies = re.findall(no_quotes, input)
-      if not movies:
-        movies = re.findall(I_regex, input)
-        print "movies: %s" % movies
+      #if not movies:
+      #  movies = re.findall(no_quotes, input)
+      #if not movies:
+      #  movies = re.findall(I_regex, input)
+      print "movies: %s" % movies
       return movies
 
     def get_sentiment_score(self, line):
@@ -373,7 +410,9 @@ class Chatbot:
       #line = input
       if re.search("!+", line):
         weight += .5
+      line = re.sub('[%s]' % re.escape(string.punctuation), '', line)
       line = line.split()
+      print line
       isNeg = False
       for word in line:
         if word in self.negation:
