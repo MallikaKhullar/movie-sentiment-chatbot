@@ -228,7 +228,7 @@ class Chatbot:
     # 3. Movie Recommendation helper functions                                  #
     #############################################################################
     def respond(self, movie_name):
-              # Get the full movie entry (with genre) from our database
+        # Get the full movie entry (with genre) from our database
         movie_entry = self.movie_in_db(movie_name)
         print "movie_in_db returned: %s" % movie_entry
         #Spell check 'movie_name' if no results
@@ -345,7 +345,6 @@ class Chatbot:
       return movie_entry
 
     def bestSpellCandidate(self, input_movie):
-      #TODO: make sure that the edit is at start of movie title (bug--"bpys" matched "bad boys" not "boys")
       input_movie = self.colloquialize(input_movie).lower().strip()
       best_title = ""
       best_edit_distance = float("inf")
@@ -356,7 +355,7 @@ class Chatbot:
         if ", the" in title:
           title = "the " + re.sub(", the", "", title) # remove ", the" to the front
           """
-        if abs(len(input_movie) - len(title)) < 5: #arbitrary
+        if abs(len(input_movie) - len(title)) < self.spell_threshold: #arbitrary
           edit_distance = self.editDistance(input_movie, title, len(input_movie), len(title), 0)
           # print input_movie, title, edit_distance
           if edit_distance < best_edit_distance: #search for minimum edit distance
@@ -368,7 +367,7 @@ class Chatbot:
       """Calculates the edit distance between strings"""
       # Optimize: Exit Early!
       if level >= self.spell_threshold:
-        return min(m, n)
+        return float("inf")
 
       # Base Case: Empty string, remove all characters of other string
       if m == 0:
@@ -378,10 +377,10 @@ class Chatbot:
 
       # Recursive Case: Calculate Edit Distance
       if s1[m-1] == s2[n-1]:    #characters are same
-        return self.editDistance(s1, s2, m-1, n-1, level+1)
+        return self.editDistance(s1, s2, m-1, n-1, level)
       else:                     #last characters are not same
         return 1 + min(self.editDistance(s1, s2, m,   n-1, level+1),      # insert
-                       self.editDistance(s1, s2, m-1, n,   level+1),      # deletion
+                       self.editDistance(s1, s2, m-1, n  , level+1),      # deletion
                        self.editDistance(s1, s2, m-1, n-1, level+1)     # substitution.
                        )
 
