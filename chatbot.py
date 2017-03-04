@@ -125,15 +125,8 @@ class Chatbot:
         1) extract the relevant information and
         2) transform the information into a response to the user
       """
-      #############################################################################
-      # TODO: Implement the extraction and transformation in this method, possibly#
-      # calling other functions. Although modular code is not graded, it is       #
-      # highly recommended                                                        #
-      #############################################################################
 
-      print "memory: %s" % self.memory
-
-      # Set the user name if not yet set!
+      # Set the user's name if not yet set!
       if self.user_name == "":
         self.memory = [input, -1] # initialize memory, -1 to signal no movie in memory
         return self.set_name(input)
@@ -151,11 +144,12 @@ class Chatbot:
       else:
         ###### Pull the movie titles from the user input ######
         movie_titles = self.get_movie_names(input)
-        print "movie_titles: " % movie_titles
+        
+        # Handle user confirmation of spell correction
         if self.spellCheck:
           self.spellCheck = False
           m = self.memory[1]
-          self.memory = [self.memory[0]]
+          self.memory = [self.memory[0], -1]
           if input.lower() in self.yes:
             movie_titles.append(self.titles[m][0])
           else:
@@ -165,7 +159,6 @@ class Chatbot:
         elif len(self.memory) > 2:
           movie_titles = self.disambiguate(input)
           self.memory = [self.memory[0], -1] #clear candidate movies from memory, keep sentiment sentence and -1 placeholder in 1st index
-          print "memory after disambiguate: %s" % self.memory
           if len(movie_titles) > 1 or len(movie_titles) == 0:
             return self.get_response("movie_clarification")
 
@@ -183,7 +176,6 @@ class Chatbot:
                 self.memory[0] = "like"
               elif 'no' in input:
                 self.memory[0] = "dislike"
-              print "memory: %s" % self.memory
               self.clarification = False
           if not movie_titles:
             # Process movie titles w/o quotes
@@ -197,18 +189,18 @@ class Chatbot:
         # Place phrase with movie into memory
         else:
           self.memory[0] = input
-          print "memory: %s" % self.memory
         
         ###### See if the movie title is in our database ######
 
-        # Protect against cases we can't handle
+        # Handle multiple movies
         if len(movie_titles) > 1:
           responses = self.multiple_matches(movie_titles)
-          response = ""
+          response = "Got them!\n\t"
           for r in responses:
-            response += r + "\n\tAlso-- "
+            response += r + "\n\t"
           return response
-          #return self.get_response("too_many_movies")
+
+        # Handle arbitrary input
         if len(movie_titles) == 0:
           return self.get_response("no_movies_found") % self.user_name
         
@@ -221,7 +213,6 @@ class Chatbot:
         rec = recommendations[0]
         response = self.get_response("recommend") % (self.user_name, self.colloquialize(rec[0])) # title information
         response += " It's a " + re.sub("\|.*", "", rec[1]).lower() + "!" #genre information
-      print "USER VEC: %s" % self.user_vec
       return response
 
     #############################################################################
@@ -230,7 +221,6 @@ class Chatbot:
     def respond(self, movie_name):
         # Get the full movie entry (with genre) from our database
         movie_entry = self.movie_in_db(movie_name)
-        print "movie_in_db returned: %s" % movie_entry
         #Spell check 'movie_name' if no results
         if len(movie_entry) == 0:
           candidate_string, spell_score = self.bestSpellCandidate(movie_name)
@@ -240,7 +230,6 @@ class Chatbot:
               self.spellCheck = True
               self.memory = [self.memory[0], movie_entry[0]]
               return "Did you mean %s?" % self.colloquialize(self.titles[movie_entry[0]][0])
-            #TODO: confirm movie is the spell checked word!
           else:  #not a real movie!
             return self.get_response("fake_movie")
 
@@ -251,23 +240,17 @@ class Chatbot:
           for i, m in enumerate(movie_entry):
             options += "\n\t\t- " + self.titles[m][0]
           self.memory += movie_entry
-          print "memory: %s" % self.memory
           return response % options
 
         ###### Associate the movie title with a sentiment score ######
 
         score = self.get_sentiment_score(re.sub(movie_name, "", self.memory[0])) # remove movie name so title words don't factor into counts
         self.user_vec[movie_entry[0]] = score # movie_id -> sentiment score
-        print "score: %d, uservec score: %d" % (score, self.user_vec[movie_entry[0]])
         movie_name = self.colloquialize(self.titles[movie_entry[0]][0]) 
-        print "movie_name: %s" % movie_name
         self.memory[1] = movie_entry[0]
-        #if not movie_entry[0] in self.memory:
-        #  self.memory.append(movie_entry[0])
 
         # Print responses
         if score == 0:
-          print "memory: %s" % self.memory
           response = self.get_response("sentiment_clarification") % movie_name
           self.clarification = True
         else:
@@ -292,9 +275,7 @@ class Chatbot:
       elif re.search(opposite_sentiment_re, statement):
         sentiments.append(re.findall(opposite_sentiment_re, statement)[0])
         sentiments += [re.sub(" ", " not ", sentiments[0])] * (len(movie_titles)-1)
-      print "sentiments: %s" % sentiments
       for i, movie in enumerate(movie_titles):
-        print "curr movie: %s" % movie
         self.memory[0] = sentiments[i]
         responses.append(self.respond(movie))
       if not responses:
@@ -308,11 +289,8 @@ class Chatbot:
         m = self.titles[self.memory[i]][0]
         input = re.sub("[^A-Za-z0-9 ]", "", input) #handle quotes, punctuation
         input = re.sub("^(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )", "(?:\w+\W+)?", input) #handle extra articles
-        print "input: %s m: %s" % (input, m)
         if re.search(input.lower(), m.lower()): #handle capitalization errors
           movie_titles.append(m) #make that movie the current movie title (maybe fix later, too general)
-          print "movie titles : %s" % movie_titles
-          #break
       return movie_titles
 
     def movie_in_db(self, movie_name):
@@ -321,27 +299,20 @@ class Chatbot:
 
       movie_name = re.sub("[\(\)]", ".", movie_name) #replace parentheses with "." to avoid bugs in regex
       movie_name = "^" + re.sub("^(?:[Tt]he |[Aa]n? |[Ll][eao]s? |[Ee]l |[OoAa] )", "(?:\w+\W+)?", movie_name.lower()) #allow for misuse of articles
-      print "movie name: %s" % movie_name
       for i, movie in enumerate(self.titles):
         # Found the movie in our movie database!
         if re.search(movie_name, movie[0].lower()): #handle improper capitalizations
           movie_entry.append(i)
-          print "appending %s" % movie[0]
-      print "full movie entry = %s" % movie_entry
-      #check for extraneous findings (if full match)
+      # check for extraneous findings (if full match)
       if len(movie_entry) > 1:
         temp = []
         for m in movie_entry:
           current = self.colloquialize(self.titles[m][0]).strip()
           target = re.sub("\([^\w+\W+\)]*\)", "", movie_name).strip() + '$' #match colloquial version, require full match
-          print "current: %s, target: %s" % (target.lower(), current.lower())
           if re.match(target.lower(), current.lower()):
-            print "Full match! %s" % self.titles[m][0]
             temp.append(m)
-        print "temp: %s" % temp
         if len(temp) > 0:
           movie_entry = temp
-      "returning %s" % movie_entry
       return movie_entry
 
     def bestSpellCandidate(self, input_movie):
@@ -350,14 +321,8 @@ class Chatbot:
       best_edit_distance = float("inf")
       for title in self.title_names:
         title = self.colloquialize(title).lower().strip()
-        """
-        title = re.sub("\([^\)]+\)", "", title).lower().strip() #remove year and lowercase (same as colloquialize function!)
-        if ", the" in title:
-          title = "the " + re.sub(", the", "", title) # remove ", the" to the front
-          """
         if abs(len(input_movie) - len(title)) < self.spell_threshold: #arbitrary
           edit_distance = self.editDistance(input_movie, title, len(input_movie), len(title), 0)
-          # print input_movie, title, edit_distance
           if edit_distance < best_edit_distance: #search for minimum edit distance
             best_title = title
             best_edit_distance = edit_distance
@@ -391,30 +356,20 @@ class Chatbot:
     def get_movie_names(self, input):
       """Pulls all movie names inside quotations from the input."""
       movie_regex = r"\"([^\"]+)\""
-      no_quotes = "([A-Z](?:\w+\W?)+?)(?:is|was|will|$)"
-      I_regex = "(I (?:\w+\W?)+?)(?:is|was|will|$)" #last resort, in case of movie title starting with "I"
       movies = re.findall(movie_regex, input)
-      #if not movies:
-      #  movies = re.findall(no_quotes, input)
-      #if not movies:
-      #  movies = re.findall(I_regex, input)
-      print "movies: %s" % movies
       return movies
 
     def get_sentiment_score(self, line):
       """Get the sentiment score of a full phrase."""
-      #print input
       score = 0
       weight = 1.0
-      #line = input
       if re.search("!+", line):
         weight += .5
       line = re.sub('[%s]' % re.escape(string.punctuation), '', line)
       line = line.split()
-      print line
       isNeg = False
       for word in line:
-        if word in self.negation:
+        if word in self.negation or re.search("nt$", word):
           isNeg = True
           continue
         word = self.p.stem(word)
@@ -426,13 +381,11 @@ class Chatbot:
           elif (isNeg and self.stemmedSentiment[word] == 'neg') or (not isNeg and self.stemmedSentiment[word] == 'pos'):
             score += 1
           if isNeg:
-          #TODO check how we tokenize
             isNeg = False
       if score > 0:
         score = weight
       if score < 0:
         score = (-1) * weight
-      print "Sentiment score: %d" % score
       return score
 
     def colloquialize(self, title):
@@ -476,10 +429,7 @@ class Chatbot:
           elif movie_rating > 0:
             self.ratings[i][j] = -1
           else:
-            self.ratings[i][j] = 0
-      # self.ratings[i][np.where(user_ratings>3.0)] = 1
-      # self.ratings[i][np.where(user_ratings>0.0)] = -1
-      # self.ratings[i][np.where(user_ratings==0.0)] = 0  
+            self.ratings[i][j] = 0 
 
     def distance(self, u, v):
       """Calculates the cosine distance function between vectors u and v"""
@@ -498,7 +448,6 @@ class Chatbot:
           if i != j:
             # Calculate item-item collaborative filtering similarity
             collab_similarity = self.distance(self.ratings[:,i], self.ratings[:,j]) #item-item similarity: dot product of movie i and movie j
-            # print "movie %s,%s collab_similarity = %s" % (i,j,collab_similarity)
 
             # Calculate the content-based similarity
             input_genre = self.title_genres[i].split("|")
@@ -510,8 +459,6 @@ class Chatbot:
             movie_length = len(movie_genre)
 
             content_similarity = num_shared_genre/(math.sqrt(input_length)*math.sqrt(movie_length))
-            # print "movie %s,%s content_similarity = %s" % (i,j,content_similarity)
-            # print "-------------------"
 
             # Calculate the weighted similarity
             alpha = 0.6
@@ -522,8 +469,6 @@ class Chatbot:
             self.recommendations[j] = (user_score, j)
       
       sortedScores = sorted(self.recommendations, key=lambda tup: tup[0], reverse=True) #sort by score
-      # for score in sortedScores:
-      #   print score
 
       recommendations = []
       #return list of k movie titles
@@ -552,8 +497,8 @@ class Chatbot:
       This is MovieBot! She's a total movie buff, and loves giving putting her encyclopedic
       knowledge of all things cinematic to good use.  She loves all movies equally and 
       gets sad if people don't like them, so be nice! 
-      Please put movie titles in quotes, and say how you feel about the movie. After about %d
-      suggestions, Moviebot will give you her expert advice!
+      Tell her the movie title (it's easiest for her if it's in quotes), and say how you 
+      feel about the movie. After about %d suggestions, Moviebot will give you her expert advice!
       """ % self.threshold
 
 
