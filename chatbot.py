@@ -139,73 +139,70 @@ class Chatbot:
 
       response = ""
       movie_titles = []
-      if self.is_turbo == True:
-        response = 'processed %s in creative mode!!' % input
-      else:
-        ###### Pull the movie titles from the user input ######
-        movie_titles = self.get_movie_names(input)
-        
-        # Handle user confirmation of spell correction
-        if self.spellCheck:
-          self.spellCheck = False
-          m = self.memory[1]
-          self.memory = [self.memory[0], -1]
-          if input.lower() in self.yes:
-            movie_titles.append(self.titles[m][0])
-          else:
-            return self.get_response("movie_clarification")
-
-        #if list of movies in memory: disambiguating a sentence
-        elif len(self.memory) > 2:
-          movie_titles = self.disambiguate(input)
-          self.memory = [self.memory[0], -1] #clear candidate movies from memory, keep sentiment sentence and -1 placeholder in 1st index
-          if len(movie_titles) > 1 or len(movie_titles) == 0:
-            return self.get_response("movie_clarification")
-
-        # Nothing found within quotations that is a movie
-        elif not movie_titles:
-          #check for reference to previous movie
-          if self.memory[1] is not -1: 
-            m = self.titles[self.memory[1]][0] #most recently-mentioned movie title
-            self.memory[0] = input
-            if re.search(self.reference_regex, input):
-              movie_titles = [m]
-            elif self.clarification:
-              movie_titles.append(m)
-              if 'yes' in input.lower():
-                self.memory[0] = "like"
-              elif 'no' in input:
-                self.memory[0] = "dislike"
-              self.clarification = False
-          if not movie_titles:
-            # Process movie titles w/o quotes
-            no_quotes = "([A-Z\"](?:\w+\W?)+?)(?:is|was|will|$)"
-            I_regex = "\"?(I (?:\w+\W?)+?)(?:is|was|will|$)"
-            movie_titles = re.findall(no_quotes, input)
-            if not movie_titles:
-              movie_titles = re.findall(I_regex, input)
-            self.memory[0] = input
-          
-        # Place phrase with movie into memory
+      ###### Pull the movie titles from the user input ######
+      movie_titles = self.get_movie_names(input)
+      
+      # Handle user confirmation of spell correction
+      if self.spellCheck:
+        self.spellCheck = False
+        m = self.memory[1]
+        self.memory = [self.memory[0], -1]
+        if input.lower() in self.yes:
+          movie_titles.append(self.titles[m][0])
         else:
+          return self.get_response("movie_clarification")
+
+      #if list of movies in memory: disambiguating a sentence
+      elif len(self.memory) > 2:
+        movie_titles = self.disambiguate(input)
+        self.memory = [self.memory[0], -1] #clear candidate movies from memory, keep sentiment sentence and -1 placeholder in 1st index
+        if len(movie_titles) > 1 or len(movie_titles) == 0:
+          return self.get_response("movie_clarification")
+
+      # Nothing found within quotations that is a movie
+      elif not movie_titles:
+        #check for reference to previous movie
+        if self.memory[1] is not -1: 
+          m = self.titles[self.memory[1]][0] #most recently-mentioned movie title
+          self.memory[0] = input
+          if re.search(self.reference_regex, input):
+            movie_titles = [m]
+          elif self.clarification:
+            movie_titles.append(m)
+            if 'yes' in input.lower():
+              self.memory[0] = "like"
+            elif 'no' in input:
+              self.memory[0] = "dislike"
+            self.clarification = False
+        if not movie_titles:
+          # Process movie titles w/o quotes
+          no_quotes = "([A-Z\"](?:\w+\W?)+?)(?:is|was|will|$)"
+          I_regex = "\"?(I (?:\w+\W?)+?)(?:is|was|will|$)"
+          movie_titles = re.findall(no_quotes, input)
+          if not movie_titles:
+            movie_titles = re.findall(I_regex, input)
           self.memory[0] = input
         
-        ###### See if the movie title is in our database ######
+      # Place phrase with movie into memory
+      else:
+        self.memory[0] = input
+      
+      ###### See if the movie title is in our database ######
 
-        # Handle multiple movies
-        if len(movie_titles) > 1:
-          responses = self.multiple_matches(movie_titles)
-          response = "Got them!\n\t"
-          for r in responses:
-            response += r + "\n\t"
-          return response
+      # Handle multiple movies
+      if len(movie_titles) > 1:
+        responses = self.multiple_matches(movie_titles)
+        response = "Got them!\n\t"
+        for r in responses:
+          response += r + "\n\t"
+        return response
 
-        # Handle arbitrary input
-        if len(movie_titles) == 0:
-          return self.get_response("no_movies_found") % self.user_name
-        
-        movie_name = movie_titles[0] # get name of movie
-        response = self.respond(movie_name)
+      # Handle arbitrary input
+      if len(movie_titles) == 0:
+        return self.get_response("no_movies_found") % self.user_name
+      
+      movie_name = movie_titles[0] # get name of movie
+      response = self.respond(movie_name)
 
       # Recommend a movie!
       if len(self.user_vec) > self.threshold:
